@@ -1,0 +1,24 @@
+{
+  "name": "samson-for-pcm32u",
+  "version": "0.0.1",
+  "description": "Open-source read-only diagnostic tool for GM/Isuzu PCM32U ECUs",
+  "license": "MIT",
+  "author": "cooltrainersamson",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cooltrainersamson/samson-for-PCM32U.git"
+  },
+  "main": "dist/main/index.cjs",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "dev": "echo 'Electron dev scripts land in commit 3'",
+    "build": "echo 'Electron build lands in commit 3'"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
