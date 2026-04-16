@@ -21,14 +21,39 @@ you open the app — this is expected and safe to bypass.
 
 ## What it does
 
-1. **Connect** to the ECU over any ELM327-compatible USB OBD-II adapter on J1850 VPW.
-2. **Unlock** the ECU with the reverse-engineered TIS2000 seed-key algorithm. All 256 algos across both tables (512 total) are built in. The tool tries the known PCM32U family default (algo 0x31, table 1 — live-verified on DNYY) first, then falls back. The `identifyAlgo()` function can brute-force all 512 combinations offline to find the correct one for an uncharacterized ECU.
-3. **Identify** the ECU by reading its 4-letter broadcast code from flash and matching it against the known vehicle database.
-4. **Scan flash memory** to locate and characterize DTC enable tables and calibration table offsets — the headline feature. Known DTCs are checked against expected values; unknown bit-7 clusters are surfaced as candidates for the project owner to catalogue.
-5. **Full flash dump** (optional, extremely slow — hardware bus speed limitation). Reads the entire flash 4 bytes at a time over J1850 VPW.
-6. **Generate a Markdown report** with full wire traffic log, save it locally.
+Samson is a plug-and-play diagnostic tool. No vehicle selection screens, no
+VIN entry — just plug in your OBD-II adapter, click Start, and the tool
+figures out the rest automatically.
 
-Every step streams live narration to the UI so you can see exactly what the tool is doing on the wire in real time.
+1. **Connect** to the ECU over any ELM327-compatible USB OBD-II adapter on J1850 VPW.
+2. **Read the broadcast code** directly from the ECU's flash memory to identify the vehicle (e.g. DNYY = 2002 Rodeo Sport 3.2L AT).
+3. **Look up the correct seed-key algorithm** from the broadcast code — just like TIS2000's DllSecurity.dll does. All 256 algos across both tables (512 total) are built in. The tool automatically selects the right one for your ECU.
+4. **Unlock** the ECU using the matched algorithm. No manual algo selection needed.
+5. **Scan flash memory** to locate and characterize DTC enable tables and calibration table offsets — the headline feature. Known DTCs are checked against expected values; unknown bit-7 clusters are surfaced as candidates for the project owner to catalogue.
+6. **Full flash dump** (optional, extremely slow — hardware bus speed limitation). Reads the entire flash 4 bytes at a time over J1850 VPW.
+7. **Generate a Markdown report** with full wire traffic log, save it locally.
+
+Every step streams live narration to the UI so you can see exactly what the
+tool is doing on the wire in real time.
+
+### How the unlock works
+
+The ECU doesn't transmit which algorithm to use. Instead, Samson reads the
+ECU's 4-letter **broadcast code** from flash (via Mode 0x23) and looks it up
+in a table derived from TIS2000's `DllSecurity.dll`. This is the same
+mechanism GM's own Service Programming System uses — we just do it
+automatically instead of requiring a manual vehicle selection.
+
+| Broadcast | Vehicle | Algo | Table | Status |
+|-----------|---------|------|-------|--------|
+| DNYY | 2002 Rodeo Sport 3.2L AT | 0x31 | 1 | Confirmed live |
+| DLYW | 2002 Trooper 3.5L AT | 0x31 | 1 | Presumed |
+| DNBN | 2002 Trooper 3.5L AT (alt) | 0x31 | 1 | Presumed |
+| DSPX | 2003 Frontera 3.5L MT | 0x31 | 1 | Presumed |
+
+If your ECU has a broadcast code not in this table, the tool surfaces it as
+an unknown candidate in the report. **That's exactly the data we need** — send
+the report so we can extend the table for everyone.
 
 ## What it does NOT do
 
@@ -105,7 +130,8 @@ src/
   preload/        contextBridge (typed window.samson API)
   renderer/       React 19 UI (tabs, live step log, wire traffic)
   shared/
-    seedkey/      TIS2000 seed-key engine (256×2 algo tables)
+    seedkey/      TIS2000 seed-key engine (256×2 algo tables from DllSecurity.dll)
+    pcm32u/       Broadcast→algo mapping, DTC database, known vehicle profiles
     elm327/       ELM327 driver, frame parser, NRC table, safety rail
     kwp/          KWP2000 client (ping, unlock, RMBA)
     scanner/      Table-hunting heuristics + broadcast/DTC finders
@@ -113,7 +139,7 @@ src/
     mock-ecu/     In-memory PCM32U simulator for testing
     transport/    Serial + mock transport abstraction
     ipc/          Event protocol types
-    orchestrator  Run coordinator with live narration events
+    orchestrator  Run coordinator with broadcast-driven algo selection
 ```
 
 47 tests cover the seed-key engine, ELM327 protocol, scanner heuristics,
