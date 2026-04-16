@@ -27,6 +27,7 @@ import type {
 } from "./scanner/broadcast";
 import type { DtcScanResult } from "./scanner/dtc";
 import type { UnlockResult } from "./kwp/client";
+import { algoForBroadcast, FAMILY_FALLBACK_ALGOS } from "./pcm32u/algo";
 
 export interface OrchestratorDeps {
   readonly transport: Transport;
@@ -185,28 +186,116 @@ export class Orchestrator {
           throw err;
         }
 
+        // ── PHASE: broadcast (probe before unlock) ─────────────────
+        // The correct flow: read the broadcast code FIRST so we can
+        // look up the correct seed-key algo, rather than guessing.
+        // Some ECUs allow Mode 0x23 without security; others gate it.
+        // We probe, and if we get NRC 0x33, unlock first then retry.
+        let broadcastBeforeUnlock = false;
+        if (this.options.scanBroadcast !== false) {
+          this.throwIfCancelled();
+          this.phase("broadcast", "running", "Probing broadcast (before unlock)…");
+          this.narrate(
+            "broadcast",
+            "Attempting Mode 0x23 read of the broadcast window WITHOUT unlock — some ECUs allow this.",
+          );
+          try {
+            const b = await scanBroadcast(driver);
+            broadcastResult = b;
+            broadcastBeforeUnlock = true;
+            if (b.matched) {
+              matchedBroadcastCode = b.matched.code;
+              this.narrate(
+                "broadcast",
+                `Matched: ${b.matched.code} — ${b.matched.vehicle} (${b.matched.year} ${b.matched.market}, ${b.matched.trans}, ${b.matched.engine})`,
+              );
+              this.phase(
+                "broadcast",
+                "ok",
+                `Broadcast identified: ${b.matched.code}`,
+              );
+            } else {
+              this.narrate(
+                "broadcast",
+                `No known broadcast in window. ${b.candidates.length} unknown 4-letter candidate(s) surfaced.`,
+              );
+              this.phase(
+                "broadcast",
+                "warn",
+                `Unknown broadcast (${b.candidates.length} candidate(s) for review)`,
+              );
+              warnings.push(
+                "Broadcast code was not in KNOWN_BROADCASTS — please send this report so the project owner can extend his table.",
+              );
+            }
+            this.result("broadcast", "broadcast", b);
+          } catch (err) {
+            const isSecurityDenied =
+              err instanceof KwpNegativeError && err.nrc.code === 0x33;
+            if (isSecurityDenied) {
+              this.narrate(
+                "broadcast",
+                "ECU requires security unlock before Mode 0x23 reads. Will read broadcast after unlocking.",
+              );
+              this.phase(
+                "broadcast",
+                "running",
+                "Deferred — ECU requires unlock first",
+              );
+            } else {
+              broadcastResult = this.errAsStage(err);
+              this.warn(
+                "broadcast",
+                `Broadcast probe failed: ${(err as Error).message}`,
+              );
+              this.phase("broadcast", "error", "Broadcast probe failed");
+            }
+          }
+        } else {
+          this.phase("broadcast", "skipped", "Skipped by user");
+        }
+
         // ── PHASE: unlock ──────────────────────────────────────────
+        // Select algo: if we read the broadcast, look it up. Otherwise
+        // try the known PCM32U family fallbacks.
         this.throwIfCancelled();
         this.phase("unlock", "running", PHASE_LABELS.unlock);
-        this.narrate(
-          "unlock",
-          "Requesting seed (Mode 0x27 01)…",
-        );
+        const algoFromBroadcast =
+          matchedBroadcastCode
+            ? algoForBroadcast(matchedBroadcastCode)
+            : null;
+        const algoHint = algoFromBroadcast
+          ? { algo: algoFromBroadcast.algo, table: algoFromBroadcast.table }
+          : FAMILY_FALLBACK_ALGOS[0]
+            ? { algo: FAMILY_FALLBACK_ALGOS[0].algo, table: FAMILY_FALLBACK_ALGOS[0].table }
+            : { algo: 0x31, table: 1 as const };
+        if (algoFromBroadcast) {
+          this.narrate(
+            "unlock",
+            `Broadcast ${matchedBroadcastCode} maps to algo 0x${algoFromBroadcast.algo.toString(16).toUpperCase().padStart(2, "0")} table ${algoFromBroadcast.table} (${algoFromBroadcast.note})`,
+          );
+        } else {
+          this.narrate(
+            "unlock",
+            `Broadcast unknown or not yet read — trying PCM32U family default: algo 0x${algoHint.algo.toString(16).toUpperCase().padStart(2, "0")} table ${algoHint.table}`,
+          );
+        }
+        this.narrate("unlock", "Requesting seed (Mode 0x27 01)…");
         try {
-          const unlock = await client.unlock({ algo: 0x31, table: 1 });
+          const unlock = await client.unlock(algoHint);
           unlockResult = unlock;
           this.narrate(
             "unlock",
-            `Seed: 0x${unlock.seed.toString(16).toUpperCase().padStart(4, "0")}. Computing key with algo 0x${unlock.algo.toString(16).toUpperCase().padStart(2, "0")} (table ${unlock.table})…`,
+            `Seed: 0x${unlock.seed.toString(16).toUpperCase().padStart(4, "0")}. Computed key with algo 0x${unlock.algo.toString(16).toUpperCase().padStart(2, "0")} (table ${unlock.table}).`,
           );
           this.narrate(
             "unlock",
-            `Key: 0x${unlock.key.toString(16).toUpperCase().padStart(4, "0")}. Sending Mode 0x27 02…`,
+            `Key: 0x${unlock.key.toString(16).toUpperCase().padStart(4, "0")}. Mode 0x27 02 accepted.`,
           );
           this.phase(
             "unlock",
             "ok",
-            `Unlocked via ${unlock.method === "known" ? "hinted algo" : "PCM32U family fallback"}`,
+            `Unlocked via ${algoFromBroadcast ? "broadcast-derived algo" : unlock.method === "known" ? "hinted algo" : "PCM32U family fallback"}`,
           );
           this.result("unlock", "unlock", unlock);
         } catch (err) {
@@ -214,13 +303,17 @@ export class Orchestrator {
           throw err;
         }
 
-        // ── PHASE: broadcast ──────────────────────────────────────
-        if (this.options.scanBroadcast !== false) {
+        // ── PHASE: broadcast (retry after unlock if deferred) ─────
+        if (
+          this.options.scanBroadcast !== false &&
+          !broadcastBeforeUnlock &&
+          !broadcastResult
+        ) {
           this.throwIfCancelled();
-          this.phase("broadcast", "running", PHASE_LABELS.broadcast);
+          this.phase("broadcast", "running", "Reading broadcast (post-unlock)…");
           this.narrate(
             "broadcast",
-            "Reading 112-byte config window via Mode 0x23 RMBA (28 chunked reads)…",
+            "Now unlocked — reading 112-byte config window via Mode 0x23 RMBA…",
           );
           try {
             const b = await scanBroadcast(driver);
@@ -262,10 +355,7 @@ export class Orchestrator {
               "error",
               "Broadcast scan failed — continuing",
             );
-            // Do NOT throw — we still want the DTC scan and the report.
           }
-        } else {
-          this.phase("broadcast", "skipped", "Skipped by user");
         }
 
         // ── PHASE: dtc ────────────────────────────────────────────
