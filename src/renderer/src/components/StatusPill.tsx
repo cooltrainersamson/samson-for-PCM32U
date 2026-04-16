@@ -4,7 +4,7 @@ import type { PhaseStatus } from "../useRun";
 
 const COLORS: Record<PhaseStatus, { bg: string; fg: string; dot: string }> = {
   idle: { bg: "#1a1e28", fg: C.textDim, dot: C.textDim },
-  running: { bg: "#102231", fg: C.cyan, dot: C.cyan },
+  running: { bg: "#102231", fg: C.tiffany, dot: C.tiffany },
   ok: { bg: "#0f2720", fg: C.green, dot: C.green },
   warn: { bg: "#2a2210", fg: C.yellow, dot: C.yellow },
   error: { bg: "#2a1018", fg: C.red, dot: C.red },

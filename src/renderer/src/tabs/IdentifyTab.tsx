@@ -128,7 +128,7 @@ export function IdentifyTab({
               />
               <span>
                 <strong style={{ color: C.orange }}>
-                  Full flash dump (very slow, ~1–3 hours)
+                  Full flash dump (extremely slow)
                 </strong>
               </span>
             </label>
@@ -189,7 +189,7 @@ export function IdentifyTab({
                   </div>
                 )}
                 {e.fix && (
-                  <div style={{ color: C.cyan, marginTop: 2 }}>
+                  <div style={{ color: C.tiffany, marginTop: 2 }}>
                     <em>Fix:</em> {e.fix}
                   </div>
                 )}
@@ -294,8 +294,9 @@ function FullDumpWarning({
       >
         <li>
           The dump reads flash <strong>4 bytes at a time</strong> over J1850
-          VPW at ~10.4 kbit/s. A full 128 KB dump is roughly{" "}
-          <strong>1–3 hours</strong>. Larger regions take proportionally longer.
+          VPW. This is inherently very slow — expect it to take a{" "}
+          <strong>long time</strong>. There is no shortcut; this is a hardware
+          bus speed limitation.
         </li>
         <li>
           <strong>Put the vehicle battery on a tender.</strong> The ECU draws
@@ -333,8 +334,8 @@ function FullDumpWarning({
 }
 
 const btnPrimary: React.CSSProperties = {
-  background: C.cyan,
-  color: "#001014",
+  background: C.tiffany,
+  color: "#081210",
   border: "none",
   padding: "10px 18px",
   borderRadius: 6,
@@ -354,8 +355,8 @@ const btnSecondary: React.CSSProperties = {
 };
 
 const btnDanger: React.CSSProperties = {
-  background: C.orange,
-  color: "#1a0e00",
+  background: C.orangeLight,
+  color: "#120800",
   border: "none",
   padding: "10px 16px",
   borderRadius: 6,

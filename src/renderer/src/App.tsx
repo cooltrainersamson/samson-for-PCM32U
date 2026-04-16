@@ -91,14 +91,14 @@ function TitleBar({
       style={{
         display: "flex",
         alignItems: "center",
-        padding: "14px 24px",
+        padding: "14px 24px 14px 80px",
         borderBottom: `1px solid ${C.border}`,
         background: C.surface,
         WebkitAppRegion: "drag",
       } as React.CSSProperties}
     >
       <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em" }}>
-        <span style={{ color: C.cyan }}>⬡</span>{" "}
+        <span style={{ color: C.tiffany }}>⬡</span>{" "}
         Samson for PCM32U
       </span>
       <span style={{ color: C.textDim, marginLeft: 10, fontSize: 12 }}>
@@ -106,7 +106,7 @@ function TitleBar({
       </span>
       <span style={{ flex: 1 }} />
       {run.active && (
-        <span style={{ color: C.cyan, fontSize: 12 }}>● run in progress…</span>
+        <span style={{ color: C.tiffany, fontSize: 12 }}>● run in progress…</span>
       )}
       {run.succeeded === true && (
         <span style={{ color: C.green, fontSize: 12 }}>● run complete</span>
@@ -145,7 +145,7 @@ function TabStrip({
               background: active ? C.surfaceHi : "transparent",
               border: "none",
               borderBottom: active
-                ? `2px solid ${C.cyan}`
+                ? `2px solid ${C.tiffany}`
                 : "2px solid transparent",
               color: active ? C.text : C.textMed,
               padding: "14px 20px",

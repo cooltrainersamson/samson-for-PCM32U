@@ -13,10 +13,10 @@ let currentOrchestrator: Orchestrator | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 820,
-    minWidth: 960,
-    minHeight: 640,
+    width: 1440,
+    height: 960,
+    minWidth: 1060,
+    minHeight: 720,
     backgroundColor: "#0a0c10",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     show: false,

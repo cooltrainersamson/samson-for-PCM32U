@@ -89,7 +89,7 @@ export function ConnectTab({
             )}
             {error.fix && (
               <p style={{ margin: "4px 0 0" }}>
-                <em style={{ color: C.cyan }}>Fix:</em> {error.fix}
+                <em style={{ color: C.tiffany }}>Fix:</em> {error.fix}
               </p>
             )}
           </div>
@@ -119,7 +119,7 @@ export function ConnectTab({
                   onClick={() => onSelectPort(p)}
                   style={{
                     ...portCard,
-                    borderColor: active ? C.cyan : C.border,
+                    borderColor: active ? C.tiffany : C.border,
                     background: active ? C.surfaceHi : C.surface,
                   }}
                 >
@@ -158,8 +158,8 @@ export function ConnectTab({
               onClick={() => onChangeBaud(b)}
               style={{
                 ...baudChip,
-                borderColor: b === baudRate ? C.cyan : C.border,
-                color: b === baudRate ? C.cyan : C.textMed,
+                borderColor: b === baudRate ? C.tiffany : C.border,
+                color: b === baudRate ? C.tiffany : C.textMed,
               }}
             >
               {b}
@@ -191,8 +191,8 @@ export function ConnectTab({
 }
 
 const btnPrimary: React.CSSProperties = {
-  background: C.cyan,
-  color: "#001014",
+  background: C.tiffany,
+  color: "#081210",
   border: "none",
   padding: "12px 20px",
   borderRadius: 6,

@@ -138,8 +138,8 @@ export function ReportTab({
 }
 
 const btnPrimary: React.CSSProperties = {
-  background: C.cyan,
-  color: "#001014",
+  background: C.tiffany,
+  color: "#081210",
   border: "none",
   padding: "8px 16px",
   borderRadius: 6,

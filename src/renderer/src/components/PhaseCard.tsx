@@ -20,7 +20,7 @@ export function PhaseCard({
     <div
       style={{
         background: emphasis ? C.surfaceHi : C.surface,
-        border: `1px solid ${phase.status === "running" ? C.cyan : C.border}`,
+        border: `1px solid ${phase.status === "running" ? C.tiffany : C.border}`,
         borderRadius: 8,
         padding: "14px 16px",
         marginBottom: 12,
@@ -59,7 +59,7 @@ export function PhaseCard({
             style={{
               width: `${pct}%`,
               height: "100%",
-              background: C.cyan,
+              background: C.tiffany,
               transition: "width 100ms linear",
             }}
           />

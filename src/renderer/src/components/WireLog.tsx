@@ -42,7 +42,7 @@ export function WireLog({
           e.direction === "tx"
             ? C.orange
             : e.direction === "rx"
-              ? C.cyan
+              ? C.tiffany
               : C.textDim;
         const stamp = new Date(e.ts).toISOString().slice(11, 23);
         return (
