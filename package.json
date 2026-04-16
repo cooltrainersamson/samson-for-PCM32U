@@ -8,16 +8,63 @@
     "type": "git",
     "url": "https://github.com/cooltrainersamson/samson-for-PCM32U.git"
   },
-  "main": "dist/main/index.cjs",
+  "main": "out/main/index.js",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "dev": "echo 'Electron dev scripts land in commit 3'",
-    "build": "echo 'Electron build lands in commit 3'"
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "pack": "electron-vite build && electron-builder --dir",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:linux": "electron-vite build && electron-builder --linux",
+    "dist:all": "electron-vite build && electron-builder -mwl"
+  },
+  "build": {
+    "appId": "com.cooltrainersamson.samson-pcm32u",
+    "productName": "Samson for PCM32U",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/@serialport/**",
+      "**/node_modules/serialport/**"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] }
+      ],
+      "category": "Utility"
+    }
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^41.2.0",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   },
