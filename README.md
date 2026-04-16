@@ -50,11 +50,10 @@ figures out the rest automatically.
 
 1. **Connect** to the ECU over any ELM327-compatible USB OBD-II adapter on J1850 VPW.
 2. **Read the broadcast code** directly from the ECU's flash memory to identify the vehicle (e.g. DNYY = 2002 Rodeo Sport 3.2L AT).
-3. **Look up the correct seed-key algorithm** from the broadcast code — just like TIS2000's DllSecurity.dll does. All 256 algos across both tables (512 total) are built in. The tool automatically selects the right one for your ECU.
-4. **Unlock** the ECU using the matched algorithm. No manual algo selection needed.
-5. **Scan flash memory** to locate and characterize DTC enable tables and calibration table offsets — the headline feature. Known DTCs are checked against expected values; unknown bit-7 clusters are surfaced as candidates for the project owner to catalogue.
-6. **Full flash dump** (optional, extremely slow — hardware bus speed limitation). Reads the entire flash 4 bytes at a time over J1850 VPW.
-7. **Generate a Markdown report** with full wire traffic log, save it locally.
+3. **Unlock** the ECU using the matched algorithm. No manual algo selection needed.
+4. **Scan flash memory** to locate and characterize DTC enable tables and calibration table offsets — the headline feature. Known DTCs are checked against expected values; unknown bit-7 clusters are surfaced as candidates for the project owner to catalogue.
+5. **Full flash dump** (optional, extremely slow — hardware bus speed limitation). Reads the entire flash 4 bytes at a time over J1850 VPW.
+6. **Generate a Markdown report** with full wire traffic log, save it locally.
 
 Every step streams live narration to the UI so you can see exactly what the
 tool is doing on the wire in real time.
