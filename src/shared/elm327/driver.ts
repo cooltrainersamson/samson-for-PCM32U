@@ -19,6 +19,7 @@ import {
   type KwpFrame,
 } from "./frames";
 import { KwpNegativeError } from "./nrc";
+import { assertSidSafe } from "./safety";
 
 export interface ElmTrace {
   readonly ts: number;
@@ -246,6 +247,10 @@ export class ElmDriver {
    * array of frames for services that produce multi-frame responses.
    */
   async sendKwp(requestBytes: number[], timeoutMs = DEFAULT_TIMEOUT): Promise<KwpFrame[]> {
+    // Hard safety rail: refuse to transmit any destructive service ID.
+    // Defense-in-depth — the higher layers never construct these, but a
+    // future bug/refactor could. This catches it at the wire boundary.
+    assertSidSafe(requestBytes);
     const hex = toHexString(requestBytes).replace(/ /g, "");
     const raw = await this.command(hex, timeoutMs);
     const { lines, statuses } = splitElmResponse(raw);
