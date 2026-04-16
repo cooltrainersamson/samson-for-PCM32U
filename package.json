@@ -1,6 +1,6 @@
 {
   "name": "samson-for-pcm32u",
-  "version": "0.0.1",
+  "version": "0.1.0-alpha.1",
   "description": "Open-source read-only diagnostic tool for GM/Isuzu PCM32U ECUs",
   "license": "MIT",
   "author": "cooltrainersamson",
