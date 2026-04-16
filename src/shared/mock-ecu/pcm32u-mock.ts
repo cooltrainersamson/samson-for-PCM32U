@@ -24,6 +24,14 @@ export interface MockEcuOptions {
   readonly rejectAtsp?: boolean;
   readonly rejectAtal?: boolean;
   readonly firstAttemptTimesOut?: boolean;
+  /** Sparse flash map: address → byte. Unmapped addresses produce NRC 0x31. */
+  readonly flash?: ReadonlyMap<number, number>;
+  /** If true, Mode 0x23 requires Mode 0x27 unlock first (realistic). */
+  readonly requireUnlockForRmba?: boolean;
+  /** If true, Mode 0x23 is rejected as serviceNotSupported. */
+  readonly rejectMode23?: boolean;
+  /** Max bytes to return per Mode 0x23 request. Real ECU = 4 (frame limit). */
+  readonly rmbaChunkBytes?: number;
 }
 
 interface EcuState {
@@ -200,6 +208,41 @@ export class MockEcu {
       }
       // Unknown subfunction
       this.respondFrame([...hdr, 0x7f, 0x27, 0x12]);
+      return;
+    }
+    if (sid === 0x23) {
+      if (this.opts.rejectMode23) {
+        this.respondFrame([...hdr, 0x7f, 0x23, 0x11]);
+        return;
+      }
+      if (this.opts.requireUnlockForRmba && !this.state.unlocked) {
+        this.respondFrame([...hdr, 0x7f, 0x23, 0x33]);
+        return;
+      }
+      if (bytes.length < 5) {
+        this.respondFrame([...hdr, 0x7f, 0x23, 0x13]); // incorrectMessageLength
+        return;
+      }
+      const ah = bytes[1]!;
+      const am = bytes[2]!;
+      const al = bytes[3]!;
+      const size = bytes[4]!;
+      const addr = (ah << 16) | (am << 8) | al;
+      const flash = this.opts.flash;
+      if (!flash || flash.size === 0) {
+        this.respondFrame([...hdr, 0x7f, 0x23, 0x31]); // requestOutOfRange
+        return;
+      }
+      const data: number[] = [];
+      for (let i = 0; i < size; i++) {
+        const b = flash.get(addr + i);
+        if (b === undefined) {
+          this.respondFrame([...hdr, 0x7f, 0x23, 0x31]);
+          return;
+        }
+        data.push(b);
+      }
+      this.respondFrame([...hdr, 0x63, ah, am, al, ...data]);
       return;
     }
     // Any other SID → serviceNotSupported
