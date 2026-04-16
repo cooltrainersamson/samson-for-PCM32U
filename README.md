@@ -22,7 +22,7 @@ you open the app — this is expected and safe to bypass.
 ## What it does
 
 1. **Connect** to the ECU over any ELM327-compatible USB OBD-II adapter on J1850 VPW.
-2. **Unlock** the ECU with the reverse-engineered TIS2000 seed-key algorithm (algo 0x31, table 1 — live-verified on DNYY).
+2. **Unlock** the ECU with the reverse-engineered TIS2000 seed-key algorithm. All 256 algos across both tables (512 total) are built in. The tool tries the known PCM32U family default (algo 0x31, table 1 — live-verified on DNYY) first, then falls back. The `identifyAlgo()` function can brute-force all 512 combinations offline to find the correct one for an uncharacterized ECU.
 3. **Identify** the ECU by reading its 4-letter broadcast code from flash and matching it against the known vehicle database.
 4. **Scan flash memory** to locate and characterize DTC enable tables and calibration table offsets — the headline feature. Known DTCs are checked against expected values; unknown bit-7 clusters are surfaced as candidates for the project owner to catalogue.
 5. **Full flash dump** (optional, extremely slow — hardware bus speed limitation). Reads the entire flash 4 bytes at a time over J1850 VPW.
