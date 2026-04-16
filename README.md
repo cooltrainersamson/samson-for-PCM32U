@@ -3,7 +3,7 @@
 Open-source, **read-only** cross-platform diagnostic tool for the Delphi 68332-based
 GM/Isuzu PCM32U ECU (2002–2004 Rodeo/Trooper/Axiom and GM siblings).
 
-> **v0.1.0-alpha.1 is available for testing.** Download pre-built binaries for
+> **v0.1.0-alpha.2 is available for testing.** Download pre-built binaries for
 > macOS, Windows, and Linux from the
 > [Releases page](https://github.com/cooltrainersamson/samson-for-PCM32U/releases).
 
