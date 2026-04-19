@@ -32,6 +32,23 @@ export interface MockEcuOptions {
   readonly rejectMode23?: boolean;
   /** Max bytes to return per Mode 0x23 request. Real ECU = 4 (frame limit). */
   readonly rmbaChunkBytes?: number;
+  /**
+   * When true, Mode 0x23 negative responses echo the rejected request's
+   * parameter bytes between the SID and the NRC: `7F 23 ...echo... NRC`.
+   * Models the extended-format negative response observed on some Isuzu
+   * PCM32U variants (e.g. Axiom 3.5L AT) rather than the KWP2000 baseline
+   * `7F 23 NRC`.
+   */
+  readonly rmbaExtendedNegFormat?: boolean;
+  /**
+   * When `"axiom"`, model the dialect observed on an Isuzu Axiom 3.5L AT
+   * (broadcast DRDX): SIZE > 1 is rejected with NRC 0x12, the positive
+   * response echoes only AM/AL (no AH), and the ECU always returns 4
+   * sequential bytes from the requested address regardless of size.
+   * Default `"dnyy"` keeps the legacy DNYY behaviour the rest of the
+   * suite is built against.
+   */
+  readonly rmbaFlavor?: "dnyy" | "axiom";
 }
 
 interface EcuState {
@@ -211,38 +228,53 @@ export class MockEcu {
       return;
     }
     if (sid === 0x23) {
+      const isAxiom = this.opts.rmbaFlavor === "axiom";
+      const nak = (nrc: number) => {
+        const tail =
+          this.opts.rmbaExtendedNegFormat || isAxiom ? bytes.slice(1) : [];
+        this.respondFrame([...hdr, 0x7f, 0x23, ...tail, nrc]);
+      };
       if (this.opts.rejectMode23) {
-        this.respondFrame([...hdr, 0x7f, 0x23, 0x11]);
+        nak(0x11);
         return;
       }
       if (this.opts.requireUnlockForRmba && !this.state.unlocked) {
-        this.respondFrame([...hdr, 0x7f, 0x23, 0x33]);
+        nak(0x33);
         return;
       }
       if (bytes.length < 5) {
-        this.respondFrame([...hdr, 0x7f, 0x23, 0x13]); // incorrectMessageLength
+        nak(0x13); // incorrectMessageLength
         return;
       }
       const ah = bytes[1]!;
       const am = bytes[2]!;
       const al = bytes[3]!;
       const size = bytes[4]!;
+      // Axiom dialect: any size != 1 is rejected as subFunctionNotSupported.
+      if (isAxiom && size !== 1) {
+        nak(0x12);
+        return;
+      }
       const addr = (ah << 16) | (am << 8) | al;
       const flash = this.opts.flash;
       if (!flash || flash.size === 0) {
-        this.respondFrame([...hdr, 0x7f, 0x23, 0x31]); // requestOutOfRange
+        nak(0x31); // requestOutOfRange
         return;
       }
+      // Axiom dialect always returns 4 sequential bytes regardless of size.
+      const returnedBytes = isAxiom ? 4 : size;
       const data: number[] = [];
-      for (let i = 0; i < size; i++) {
+      for (let i = 0; i < returnedBytes; i++) {
         const b = flash.get(addr + i);
         if (b === undefined) {
-          this.respondFrame([...hdr, 0x7f, 0x23, 0x31]);
+          nak(0x31);
           return;
         }
         data.push(b);
       }
-      this.respondFrame([...hdr, 0x63, ah, am, al, ...data]);
+      // Axiom dialect echoes only AM/AL in the positive response.
+      const headerEcho = isAxiom ? [am, al] : [ah, am, al];
+      this.respondFrame([...hdr, 0x63, ...headerEcho, ...data]);
       return;
     }
     // Any other SID → serviceNotSupported

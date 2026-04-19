@@ -275,11 +275,17 @@ export class ElmDriver {
         "Verify the key is in the RUN position. If the ECU just never answers, check that you're talking to the PCM and not the TCM (they share the bus and have different addresses on some vehicles).",
       );
     }
-    // Check for negative response frame
+    // Check for negative response frame.
+    //
+    // Standard KWP2000 negative response is [SID, NRC] — 2 data bytes.
+    // Some GM/Delphi PCM32U variants (observed on Isuzu Axiom 3.5L) return
+    // an extended format that echoes the rejected request's parameters
+    // between the SID and the NRC: [SID, ...echoedParams, NRC]. In both
+    // layouts the NRC is the final byte of the data payload.
     for (const f of frames) {
       if (f.sid === 0x7f) {
         const requestedSid = f.data[0] ?? 0;
-        const nrc = f.data[1] ?? 0;
+        const nrc = f.data.length >= 2 ? f.data[f.data.length - 1]! : 0;
         throw new KwpNegativeError(requestedSid, nrc);
       }
     }

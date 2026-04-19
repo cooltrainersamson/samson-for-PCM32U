@@ -5,7 +5,7 @@ import { attachMockEcu } from "../mock-ecu/pcm32u-mock";
 import { createDnyyFixture } from "../pcm32u/fixture";
 import { scanBroadcast, analyzeBroadcastWindow } from "./broadcast";
 import { scanDtcTables } from "./dtc";
-import { readMemory } from "../kwp/rmba";
+import { readMemory, getRmbaFlavor } from "../kwp/rmba";
 
 async function makeUnlockedDriver(fixtureOpts: Parameters<typeof createDnyyFixture>[0] = {}) {
   const flash = createDnyyFixture(fixtureOpts);
@@ -50,27 +50,70 @@ describe("RMBA + scanners against a DNYY fixture", () => {
     expect(result.candidates.map((c) => c.text)).toContain("ZZZZ");
   });
 
-  it("scanDtcTables reports all known DTCs at their default bytes and finds zero unknowns on a clean DNYY", async () => {
+  it("scanDtcTables reports all known DTCs at their default bytes and finds zero unknowns on a clean fixture", async () => {
     const { driver } = await makeUnlockedDriver();
     const result = await scanDtcTables(driver);
-    // All 18 known DTCs should be present with their defaults
-    expect(result.known).toHaveLength(18);
+    // Every DTC_DB entry should be present (the fixture seeds the entire
+    // table from DTC_DB defaults), and each should match its default.
+    const { DTC_DB } = await import("../pcm32u/dtcs");
+    expect(result.known).toHaveLength(DTC_DB.length);
     for (const k of result.known) {
-      expect(k.enabled).toBe(true);
       expect(k.matchesDefault).toBe(true);
     }
-    // Fixture has no injected unknowns — expect empty list
+    // Some entries have defaultByte = 0x60 (deliberately suppressed in
+    // the calibration); those decode as not-enabled. Everything that *is*
+    // enabled should sit in the bit-7-set range.
+    const enabledCount = result.known.filter((k) => k.enabled).length;
+    const expectedEnabled = DTC_DB.filter((e) => (e.defaultByte & 0x80) !== 0).length;
+    expect(enabledCount).toBe(expectedEnabled);
+    // Fixture seeds only DTC_DB addresses with non-zero bytes, so any
+    // unknown candidate found is by construction not in the DB.
     expect(result.unknownCandidates).toEqual([]);
   }, 30000);
 
   it("scanDtcTables detects an injected unknown DTC candidate", async () => {
+    // 0x00fcdc is a slot the live DRDX dump shows with a non-standard
+    // enable byte (0x28) but isn't in DTC_DB — useful as an "unknown"
+    // injection point that won't get auto-classified as known.
+    const injectAt = 0x00fcdc;
     const { driver } = await makeUnlockedDriver({
-      extraUnknownDtcAddr: 0x00fcb0,
+      extraUnknownDtcAddr: injectAt,
     });
     const result = await scanDtcTables(driver);
     expect(result.unknownCandidates.length).toBeGreaterThan(0);
-    expect(result.unknownCandidates.some((u) => u.addr === 0x00fcb0)).toBe(true);
+    expect(result.unknownCandidates.some((u) => u.addr === injectAt)).toBe(true);
   }, 30000);
+
+  it("auto-detects axiom-flavor RMBA: size>1 NRC 0x12 → switch to size=1, parse 2-byte addr echo", async () => {
+    const flash = createDnyyFixture();
+    const { driverTransport } = await attachMockEcu({
+      flash,
+      rmbaFlavor: "axiom",
+    });
+    const driver = new ElmDriver(driverTransport);
+    await driver.attach();
+    await driver.init();
+    // No prior detection — first read should probe DNYY, get NRC 0x12,
+    // fall back to axiom, succeed, and cache "axiom" for later reads.
+    expect(getRmbaFlavor(driver)).toBeNull();
+    const res = await readMemory(driver, 0x01827c, 4);
+    expect(getRmbaFlavor(driver)).toBe("axiom");
+    expect(String.fromCharCode(...res.bytes)).toBe("DNYY");
+  });
+
+  it("scanBroadcast works against an axiom-flavor mock (full window read)", async () => {
+    const flash = createDnyyFixture();
+    const { driverTransport } = await attachMockEcu({
+      flash,
+      rmbaFlavor: "axiom",
+    });
+    const driver = new ElmDriver(driverTransport);
+    await driver.attach();
+    await driver.init();
+    const result = await scanBroadcast(driver);
+    expect(result.matched?.code).toBe("DNYY");
+    expect(getRmbaFlavor(driver)).toBe("axiom");
+  });
 
   it("Mode 0x23 rejection (NRC 0x11) surfaces cleanly from readMemory", async () => {
     const flash = createDnyyFixture();

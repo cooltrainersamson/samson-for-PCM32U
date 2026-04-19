@@ -105,7 +105,7 @@ describe("Orchestrator", () => {
 
   it("surfaces unknown DTC candidates via a warn phase status", async () => {
     const events = await runOnce({
-      fixture: { extraUnknownDtcAddr: 0x00fcb0 },
+      fixture: { extraUnknownDtcAddr: 0x00fcdc },
     });
     const dtcPhases = events
       .filter((e) => e.type === "phase" && e.phase === "dtc")

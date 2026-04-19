@@ -76,6 +76,25 @@ describe("ELM327 + mock PCM32U end-to-end", () => {
     expect(result.key).toBe(0x7c73);
   });
 
+  it("decodes the NRC from a GM-extended Mode 0x23 negative response (echoed params before NRC)", async () => {
+    const { driverTransport } = await attachMockEcu({
+      rejectMode23: true,
+      rmbaExtendedNegFormat: true,
+    });
+    const driver = new ElmDriver(driverTransport);
+    await driver.attach();
+    await driver.init();
+    // rejectMode23 -> NRC 0x11 (serviceNotSupported). With the extended
+    // format the frame looks like `7F 23 <echoed request tail> 11`; the
+    // driver must extract the real NRC from the tail, not data[1].
+    await expect(
+      driver.sendKwp([0x23, 0x01, 0x82, 0x70, 0x04]),
+    ).rejects.toMatchObject({
+      name: "KwpNegativeError",
+      nrc: { code: 0x11, name: "serviceNotSupported" },
+    });
+  });
+
   it("surfaces a KwpNegativeError with WHY/FIX for a totally unknown SID", async () => {
     const { driverTransport } = await attachMockEcu();
     const driver = new ElmDriver(driverTransport);

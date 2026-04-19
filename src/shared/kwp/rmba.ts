@@ -1,15 +1,37 @@
-// Mode 0x23 ReadMemoryByAddress client. PCM32U answers 4 data bytes per
-// request (J1850 VPW frame limit: 12 bytes on wire = 3 header + SID + 3
-// address + 4 data + CRC). Known-working live on DNYY — see
-// rodeoecu/pcm32u_dump_svc23.py for the reference Python implementation.
+// Mode 0x23 ReadMemoryByAddress client. Two PCM32U dialects observed:
 //
-// Chunks a larger window into requests of `chunkSize` bytes each, with
-// progress callbacks so the UI can drive a progress bar during the full
-// flash dump. Retries each chunk once on transient errors before surfacing.
+//   * "dnyy" — request `23 AH AM AL SIZE` with SIZE up to 4. Response
+//     `63 AH AM AL d0 d1 d2 d3` (header echoes full 3-byte address).
+//     Reference: rodeoecu/pcm32u_dump_svc23.py, live-verified on DNYY.
+//
+//   * "axiom" — observed on Isuzu Axiom 3.5L AT (broadcast DRDX). The
+//     ECU rejects any SIZE > 1 with NRC 0x12 (subFunctionNotSupported),
+//     and its negative responses use the GM extended format that echoes
+//     the request params before the NRC. Positive response shape is
+//     `63 AM AL d0 d1 d2 d3` — a 2-byte address echo, and 4 sequential
+//     bytes of memory regardless of the (size=1) byte we sent. So on
+//     this dialect we always pull 4 bytes per round-trip too.
+//
+// Either way we get 4 bytes per round-trip on the wire. The dialect is
+// auto-detected on the first read against a given driver and cached.
 
 import { ElmDriver } from "../elm327/driver";
 import { KwpNegativeError } from "../elm327/nrc";
 import { TransportError } from "../transport/types";
+
+export type RmbaFlavor = "dnyy" | "axiom";
+
+const flavorCache = new WeakMap<ElmDriver, RmbaFlavor>();
+
+/** Test-only: clear the per-driver flavor cache so a fresh probe re-detects. */
+export function _resetRmbaFlavorCache(driver: ElmDriver): void {
+  flavorCache.delete(driver);
+}
+
+/** Inspect the cached dialect for a driver, or `null` if not yet detected. */
+export function getRmbaFlavor(driver: ElmDriver): RmbaFlavor | null {
+  return flavorCache.get(driver) ?? null;
+}
 
 export interface ReadMemoryOptions {
   readonly chunkSize?: number;
@@ -100,10 +122,40 @@ async function readChunk(
   addr: number,
   size: number,
 ): Promise<number[]> {
+  const cached = flavorCache.get(driver);
+  if (cached) {
+    return readChunkAs(driver, addr, size, cached);
+  }
+  // First read against this driver — try the legacy DNYY dialect first.
+  // If the ECU rejects size>1 with NRC 0x12, switch to the Axiom dialect
+  // and retry. Cache whichever wins so future chunks skip the probe.
+  try {
+    const out = await readChunkAs(driver, addr, size, "dnyy");
+    flavorCache.set(driver, "dnyy");
+    return out;
+  } catch (err) {
+    if (err instanceof KwpNegativeError && err.nrc.code === 0x12) {
+      const out = await readChunkAs(driver, addr, size, "axiom");
+      flavorCache.set(driver, "axiom");
+      return out;
+    }
+    throw err;
+  }
+}
+
+async function readChunkAs(
+  driver: ElmDriver,
+  addr: number,
+  size: number,
+  flavor: RmbaFlavor,
+): Promise<number[]> {
   const ah = (addr >>> 16) & 0xff;
   const am = (addr >>> 8) & 0xff;
   const al = addr & 0xff;
-  const frames = await driver.sendKwp([0x23, ah, am, al, size]);
+  // Wire size: dnyy honours the requested size up to 4; axiom rejects any
+  // size != 1 but always returns 4 sequential bytes anyway.
+  const wireSize = flavor === "axiom" ? 1 : size;
+  const frames = await driver.sendKwp([0x23, ah, am, al, wireSize]);
   const f = frames[0]!;
   if (f.sid !== 0x63) {
     throw new TransportError(
@@ -112,8 +164,10 @@ async function readChunk(
       "Retry the read. If it keeps happening, verify the unlock is still valid.",
     );
   }
-  // data layout: [0x63, AH, AM, AL, d0, d1, d2, d3]
-  return f.data.slice(3, 3 + size);
+  // dnyy:  data = [AH, AM, AL, d0, d1, d2, d3] — 3-byte address echo
+  // axiom: data = [AM, AL, d0, d1, d2, d3]     — 2-byte address echo
+  const dataStart = flavor === "axiom" ? 2 : 3;
+  return [...f.data.slice(dataStart, dataStart + size)];
 }
 
 export class RangeReadError extends Error {

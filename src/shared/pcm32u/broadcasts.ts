@@ -62,6 +62,20 @@ export const KNOWN_BROADCASTS: Readonly<Record<string, BroadcastProfile>> = {
     engine: "6VE1 3.5L",
     vehicle: "Frontera",
   },
+  DRDX: {
+    // Discovered live 2026-04-18 on an Axiom 3.5L AT (broadcast tag read
+    // at 0x018280 via the axiom-flavor RMBA). dtcBase is the family
+    // default until we confirm with a successful DTC scan.
+    code: "DRDX",
+    year: "02",
+    market: "UESUS",
+    trans: "AT",
+    wb: "—",
+    configBase: 0x018280,
+    dtcBase: 0x00f948,
+    engine: "6VE1 3.5L",
+    vehicle: "Axiom",
+  },
 };
 
 /** Address window to scan for the broadcast tag. Covers every known configBase ±32. */

@@ -20,6 +20,7 @@ export const BROADCAST_ALGO: Readonly<Record<string, AlgoMapping>> = {
   DLYW: { table: 1, algo: 0x31, note: "presumed — same PCM32U family" },
   DNBN: { table: 1, algo: 0x31, note: "presumed — same PCM32U family" },
   DSPX: { table: 1, algo: 0x31, note: "presumed — same PCM32U family" },
+  DRDX: { table: 1, algo: 0x31, note: "confirmed live 2026-04-18 (Axiom 3.5L AT)" },
 };
 
 // Fallback algos to try when the broadcast is unknown or not in the table.
