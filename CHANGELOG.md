@@ -1,5 +1,63 @@
 # Changelog
 
+## v0.1.0-alpha.4 — 2026-05-07
+
+Third alpha release. Headline: **the tool now updates itself, and
+finished runs render a plain-English summary** above the technical
+report.
+
+### What's new
+
+- **Auto-update via electron-updater.** The app now checks GitHub
+  Releases on launch and surfaces a banner above the tab strip when
+  a new version exists. Linux (AppImage) and Windows (NSIS) get the
+  full flow: silent download in the background, "restart and install"
+  CTA when the new build is ready. macOS is capped at notify-only —
+  the silent install requires a notarized signed binary, which this
+  open-source project doesn't ship, so the macOS banner offers an
+  "Open download page" CTA that takes the user to the GitHub release.
+  Once the project gets an Apple Developer ID and notarization, the
+  macOS branch flips a single boolean and full auto-install starts
+  working without other code changes.
+
+  The check is gated on `app.isPackaged`, so dev builds skip it
+  silently (no spurious "Application is not packaged" errors). New
+  IPC events: `samson:update` (state stream) and the `onUpdate` /
+  `installUpdate` / `checkForUpdates` methods on the
+  `window.samson` API.
+
+- **User summary panel on the report tab.** Above the raw markdown
+  view, the report tab now renders a section that translates the
+  run's auto-detected facts into plain English. Four parts: a one-
+  line verdict ("Your ECU is fully recognized" vs. "Your ECU has data
+  the tool hasn't seen before"), a findings list with colored icons
+  (✓ ok, ! warn, ★ new, ✕ fail), a "What you're helping with"
+  bullet list when the run uncovered novel data, and a single
+  next-step sentence — escalating to "email the report" only when
+  there's something genuinely worth sharing.
+
+  Auto-detection-first by design: the panel is derived purely from
+  the same `ReportInput` the markdown report uses, never asks the
+  user to select an ECU type. New module: `shared/report/summary.ts`
+  with 6 unit tests covering all major branches (clean recognized
+  run, unknown variant, init failure, ping failure, unknown DTCs,
+  warning surfacing). The `done` IPC event now carries
+  `userSummary: UserSummary | null`.
+
+### Behaviour changes & migration notes
+
+- Existing 0.1.0-alpha.3 users: this is the first build with auto-
+  update infrastructure, so the existing installed copies will not
+  detect 0.1.0-alpha.4 — those users still need to re-download once.
+  **From this release onward, future updates are automatic** on
+  Linux/Windows and one-click-to-download on macOS.
+- The previously-hardcoded `TOOL_VERSION = "0.0.1"` mistake in main
+  is gone: version now reads from `app.getVersion()` so it can never
+  drift from the release tag.
+- DNYY / DRDX / all existing variants: zero behavioural change to
+  the diagnostic flow.
+- Tests: 56 pass (was 50; +6 for the summary module).
+
 ## v0.1.0-alpha.3 — 2026-04-19
 
 Second alpha release. Headline: **first PCM32U variant beyond DNYY now
