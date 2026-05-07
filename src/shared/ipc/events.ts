@@ -92,6 +92,7 @@ export type RunEvent =
       success: boolean;
       reportMarkdown: string;
       suggestedFilename: string;
+      userSummary: import("../report/summary").UserSummary | null;
       ts: number;
     };
 

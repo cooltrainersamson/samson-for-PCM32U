@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { RunEvent, RunOptions, PhaseId } from "@shared/ipc/events";
+import type { UserSummary } from "@shared/report/summary";
 
 export type PhaseStatus =
   | "idle"
@@ -36,6 +37,7 @@ export interface RunState {
   readonly results: Record<string, unknown>;
   readonly reportMarkdown: string | null;
   readonly suggestedFilename: string | null;
+  readonly userSummary: UserSummary | null;
 }
 
 export const PHASE_ORDER: PhaseId[] = [
@@ -69,6 +71,7 @@ function initialState(): RunState {
     results: {},
     reportMarkdown: null,
     suggestedFilename: null,
+    userSummary: null,
   };
 }
 
@@ -154,6 +157,7 @@ function reducer(state: RunState, action: Action): RunState {
             succeeded: ev.success,
             reportMarkdown: ev.reportMarkdown,
             suggestedFilename: ev.suggestedFilename,
+            userSummary: ev.userSummary,
           };
       }
       return state;
@@ -195,6 +199,7 @@ export function useRun() {
           success: false,
           reportMarkdown: "",
           suggestedFilename: "failed-run.md",
+          userSummary: null,
           ts: Date.now(),
         },
       });

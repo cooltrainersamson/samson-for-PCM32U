@@ -15,6 +15,7 @@ import { scanBroadcast } from "./scanner/broadcast";
 import { scanDtcTables } from "./scanner/dtc";
 import { readMemory } from "./kwp/rmba";
 import { buildReport, reportFilename } from "./report/markdown";
+import { buildUserSummary } from "./report/summary";
 import type {
   RunEvent,
   RunOptions,
@@ -454,7 +455,7 @@ export class Orchestrator {
 
         // ── PHASE: report ──────────────────────────────────────────
         this.phase("report", "running", PHASE_LABELS.report);
-        const reportMd = buildReport({
+        const reportInput = {
           toolVersion: this.deps.platform.toolVersion,
           generatedAt: new Date(),
           platform: {
@@ -475,7 +476,9 @@ export class Orchestrator {
           warnings,
           errors,
           trafficLog: driver.trace,
-        });
+        };
+        const reportMd = buildReport(reportInput);
+        const userSummary = buildUserSummary(reportInput);
         const filename = reportFilename(new Date(), matchedBroadcastCode);
         this.phase("report", "ok", `Report built: ${filename}`);
 
@@ -485,6 +488,7 @@ export class Orchestrator {
           success: true,
           reportMarkdown: reportMd,
           suggestedFilename: filename,
+          userSummary,
           ts: this.now(),
         });
       } finally {
@@ -509,7 +513,7 @@ export class Orchestrator {
 
       // Still emit a report with whatever we have. The report is the
       // deliverable — failures become data, not reasons to hide data.
-      const reportMd = buildReport({
+      const reportInput = {
         toolVersion: this.deps.platform.toolVersion,
         generatedAt: new Date(),
         platform: {
@@ -532,13 +536,16 @@ export class Orchestrator {
         warnings,
         errors,
         trafficLog: driver.trace,
-      });
+      };
+      const reportMd = buildReport(reportInput);
+      const userSummary = buildUserSummary(reportInput);
       const filename = reportFilename(new Date(), matchedBroadcastCode);
       this.emit({
         type: "done",
         success: false,
         reportMarkdown: reportMd,
         suggestedFilename: filename,
+        userSummary,
         ts: this.now(),
       });
     } finally {

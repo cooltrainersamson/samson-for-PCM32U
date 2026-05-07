@@ -1,6 +1,7 @@
 import { useState, type JSX } from "react";
 import { C, FONT_MONO, FONT_SANS } from "../tokens";
 import type { useRun } from "../useRun";
+import type { FindingKind, UserSummary } from "@shared/report/summary";
 
 export function ReportTab({
   run,
@@ -11,6 +12,7 @@ export function ReportTab({
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const md = run.state.reportMarkdown;
   const name = run.state.suggestedFilename;
+  const summary = run.state.userSummary;
 
   if (!md || !name) {
     return (
@@ -72,10 +74,11 @@ export function ReportTab({
           </div>
         </div>
         <span style={{ flex: 1 }} />
-        <button style={btnSecondary} onClick={() => void onCopy()}>
+        <button type="button" style={btnSecondary} onClick={() => void onCopy()}>
           Copy to clipboard
         </button>
         <button
+          type="button"
           style={{ ...btnPrimary, marginLeft: 8 }}
           onClick={() => void onSave()}
           disabled={saving}
@@ -100,20 +103,22 @@ export function ReportTab({
         </div>
       )}
 
-      <p
+      {summary && <SummaryPanel summary={summary} />}
+
+      <div
         style={{
-          fontSize: 12,
-          color: C.textMed,
-          marginBottom: 12,
-          maxWidth: 760,
+          fontSize: 11,
+          color: C.textDim,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginTop: 18,
+          marginBottom: 8,
+          paddingTop: 12,
+          borderTop: `1px solid ${C.border}`,
         }}
       >
-        If the <strong>Broadcast</strong> or <strong>DTC scan</strong> sections
-        mention unknown candidates, please email the saved <code>.md</code>{" "}
-        file to <strong>cooltrainersamson@gmail.com</strong> so the project
-        owner can extend his reverse-engineered tables. The tool does not
-        collect PII automatically, but always review the file before sending.
-      </p>
+        Full technical report
+      </div>
 
       <pre
         style={{
@@ -136,6 +141,165 @@ export function ReportTab({
     </div>
   );
 }
+
+function SummaryPanel({ summary }: { summary: UserSummary }): JSX.Element {
+  return (
+    <div
+      style={{
+        background: "#0a0f14",
+        border: `1px solid ${C.border}`,
+        borderRadius: 8,
+        padding: 18,
+        marginBottom: 4,
+        fontFamily: FONT_SANS,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: C.textDim,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginBottom: 8,
+        }}
+      >
+        Summary
+      </div>
+
+      <div
+        style={{
+          fontSize: 14,
+          color: C.text,
+          marginBottom: 14,
+          fontWeight: 600,
+          lineHeight: 1.4,
+        }}
+      >
+        {summary.oneLine}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {summary.findings.map((f, i) => (
+          <FindingRow key={i} kind={f.kind} headline={f.headline} detail={f.detail} />
+        ))}
+      </div>
+
+      {summary.contributions.length > 0 && (
+        <>
+          <div
+            style={{
+              fontSize: 11,
+              color: C.textDim,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              marginTop: 16,
+              marginBottom: 6,
+            }}
+          >
+            What you're helping with
+          </div>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: 18,
+              fontSize: 12.5,
+              color: C.textMed,
+              lineHeight: 1.5,
+            }}
+          >
+            {summary.contributions.map((c, i) => (
+              <li key={i} style={{ marginBottom: 4 }}>
+                {c}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <div
+        style={{
+          fontSize: 11,
+          color: C.textDim,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginTop: 16,
+          marginBottom: 6,
+        }}
+      >
+        Next step
+      </div>
+      <div
+        style={{
+          fontSize: 12.5,
+          color: summary.shouldShare ? C.text : C.textMed,
+          lineHeight: 1.5,
+        }}
+      >
+        {summary.nextStep}
+      </div>
+    </div>
+  );
+}
+
+function FindingRow({
+  kind,
+  headline,
+  detail,
+}: {
+  kind: FindingKind;
+  headline: string;
+  detail?: string;
+}): JSX.Element {
+  const cfg = STYLE_FOR[kind];
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+        fontSize: 12.5,
+      }}
+    >
+      <div
+        style={{
+          flex: "0 0 auto",
+          width: 18,
+          height: 18,
+          borderRadius: "50%",
+          background: cfg.bg,
+          color: cfg.fg,
+          fontSize: 11,
+          fontWeight: 700,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginTop: 1,
+        }}
+        aria-label={cfg.aria}
+      >
+        {cfg.glyph}
+      </div>
+      <div style={{ flex: 1, lineHeight: 1.45 }}>
+        <div style={{ color: C.text, fontWeight: 600 }}>{headline}</div>
+        {detail && (
+          <div style={{ color: C.textMed, fontSize: 12, marginTop: 2 }}>
+            {detail}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const STYLE_FOR: Record<
+  FindingKind,
+  { bg: string; fg: string; glyph: string; aria: string }
+> = {
+  ok: { bg: "#0f3525", fg: C.green, glyph: "✓", aria: "ok" },
+  warn: { bg: "#3a2c0a", fg: C.yellow, glyph: "!", aria: "warning" },
+  new: { bg: "#0d2a3d", fg: C.tiffany, glyph: "★", aria: "new finding" },
+  fail: { bg: "#3a0a14", fg: C.red, glyph: "✕", aria: "failure" },
+};
 
 const btnPrimary: React.CSSProperties = {
   background: C.tiffany,
