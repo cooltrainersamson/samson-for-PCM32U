@@ -100,6 +100,15 @@ jobs:
           else
             echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           fi
+      - name: Wipe existing draft release (so renamed artifacts don't co-exist with old ones)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Best-effort: only deletes the GitHub Release row, not the git
+          # tag. If no draft exists, this is a no-op.
+          gh release delete "${{ steps.tag.outputs.name }}" --yes \
+            --repo "${{ github.repository }}" \
+            || echo "(no existing release to delete — continuing)"
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

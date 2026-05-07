@@ -52,7 +52,8 @@
             "arm64"
           ]
         }
-      ]
+      ],
+      "artifactName": "Samson-${version}-macOS-${arch}.${ext}"
     },
     "win": {
       "target": [
@@ -62,7 +63,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "artifactName": "Samson-${version}-Windows-${arch}.${ext}"
     },
     "linux": {
       "target": [
@@ -73,7 +75,8 @@
           ]
         }
       ],
-      "category": "Utility"
+      "category": "Utility",
+      "artifactName": "Samson-${version}-Linux-${arch}.${ext}"
     },
     "publish": {
       "provider": "github",
