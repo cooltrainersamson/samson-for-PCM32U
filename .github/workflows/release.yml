@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or commit to release (e.g. v0.1.0-alpha.4)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -26,6 +32,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -35,37 +43,67 @@ jobs:
       - run: npm run ${{ matrix.cmd }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Skip macOS code signing — no Apple Developer ID configured.
+          # Without this, electron-builder hangs trying to find a cert.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - name: Upload artifacts
+        # Run even if a previous step failed so partial-platform releases
+        # still get the manifests + binaries that DID build.
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: samson-${{ matrix.platform }}
+          # latest-*.yml manifests are REQUIRED by electron-updater for
+          # auto-update to work. Without them, the app can find a release
+          # but won't recognize it as updateable.
           path: |
             release/*.dmg
             release/*.exe
             release/*.AppImage
             release/*.zip
+            release/latest*.yml
+            release/latest*.yaml
           if-no-files-found: warn
 
   create-release:
     needs: build
+    # Run even if some matrix entries failed — we want partial-platform
+    # releases (e.g. mac+linux when Windows breaks) rather than no
+    # release at all.
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
       - name: List artifacts
-        run: find artifacts -type f | head -20
+        run: find artifacts -type f | sort
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.ref }}" ]; then
+            echo "name=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name }}
           draft: true
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.exe
             artifacts/**/*.AppImage
             artifacts/**/*.zip
+            artifacts/**/latest*.yml
+            artifacts/**/latest*.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
