@@ -52,7 +52,9 @@
             "arm64"
           ]
         }
-      ],
+      ]
+    },
+    "dmg": {
       "artifactName": "Samson-${version}-macOS-${arch}.${ext}"
     },
     "win": {
@@ -63,7 +65,9 @@
             "x64"
           ]
         }
-      ],
+      ]
+    },
+    "nsis": {
       "artifactName": "Samson-${version}-Windows-${arch}.${ext}"
     },
     "linux": {
@@ -75,7 +79,9 @@
           ]
         }
       ],
-      "category": "Utility",
+      "category": "Utility"
+    },
+    "appImage": {
       "artifactName": "Samson-${version}-Linux-${arch}.${ext}"
     },
     "publish": {
