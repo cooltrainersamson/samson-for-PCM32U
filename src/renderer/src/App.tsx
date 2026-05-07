@@ -4,7 +4,9 @@ import { ConnectTab } from "./tabs/ConnectTab";
 import { IdentifyTab } from "./tabs/IdentifyTab";
 import { ReportTab } from "./tabs/ReportTab";
 import { ComingSoonTab } from "./tabs/ComingSoonTab";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { useRun } from "./useRun";
+import { useUpdates } from "./useUpdates";
 import type { PortInfo } from "@shared/ipc/events";
 
 type TabId = "connect" | "identify" | "report" | "coming-soon";
@@ -22,6 +24,7 @@ export function App(): JSX.Element {
   const [baudRate, setBaudRate] = useState(115200);
   const [version, setVersion] = useState<string>("");
   const run = useRun();
+  const updates = useUpdates();
 
   useEffect(() => {
     void window.samson.getVersion().then(setVersion);
@@ -53,6 +56,7 @@ export function App(): JSX.Element {
       }}
     >
       <TitleBar version={version} run={run.state} />
+      <UpdateBanner state={updates.state} onInstall={updates.install} />
       <TabStrip tabs={TABS} current={tab} onChange={setTab} />
       <div style={{ flex: 1, overflow: "hidden" }}>
         {tab === "connect" && (

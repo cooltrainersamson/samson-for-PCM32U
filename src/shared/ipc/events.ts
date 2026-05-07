@@ -127,3 +127,25 @@ export interface PlatformInfo {
   readonly arch: string;
   readonly toolVersion: string;
 }
+
+/**
+ * Auto-update lifecycle events.
+ *
+ * Linux/Windows: full flow (checking → available → downloading → ready).
+ * macOS: capped at "available" — Gatekeeper blocks unsigned auto-installs,
+ * so we only notify and link to the GitHub release page. The
+ * `canAutoInstall` flag on the `available` event tells the UI whether to
+ * offer "restart and install" or "open download page".
+ */
+export type UpdateEvent =
+  | { type: "checking" }
+  | { type: "current"; currentVersion: string }
+  | {
+      type: "available";
+      version: string;
+      releaseUrl: string;
+      canAutoInstall: boolean;
+    }
+  | { type: "downloading"; percent: number }
+  | { type: "ready"; version: string }
+  | { type: "error"; message: string };

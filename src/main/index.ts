@@ -1,12 +1,28 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from "electron";
+import { autoUpdater } from "electron-updater";
 import { join } from "node:path";
 import { writeFile, mkdir } from "node:fs/promises";
 import { homedir, platform as osPlatform, release, arch } from "node:os";
 import { SerialTransport, listPorts } from "../shared/transport/serial";
 import { Orchestrator } from "../shared/orchestrator";
-import type { RunEvent, RunOptions, PlatformInfo, PortInfo } from "../shared/ipc/events";
+import type {
+  RunEvent,
+  RunOptions,
+  PlatformInfo,
+  PortInfo,
+  UpdateEvent,
+} from "../shared/ipc/events";
 
-const TOOL_VERSION = "0.0.1";
+// Read version from package.json so the value never drifts from the
+// release tag electron-builder publishes.
+const TOOL_VERSION = app.getVersion();
+
+// Outbound update-event channel. Renderer subscribes via `samson.onUpdate`.
+function emitUpdate(event: UpdateEvent): void {
+  mainWindow?.webContents.send("samson:update", event);
+}
+
+let latestUpdateUrl: string | null = null;
 
 let mainWindow: BrowserWindow | null = null;
 let currentOrchestrator: Orchestrator | null = null;
@@ -139,11 +155,108 @@ function registerIpc(): void {
   );
 
   ipcMain.handle("samson:getVersion", (): string => TOOL_VERSION);
+
+  // ── Auto-update IPC ────────────────────────────────────────────────
+  // On Linux/Windows: download the update and quitAndInstall on user click.
+  // On macOS: Gatekeeper blocks silent installs of unsigned apps, so we
+  // open the GitHub release page externally and the user re-downloads.
+  ipcMain.handle("samson:installUpdate", (): void => {
+    if (process.platform === "darwin") {
+      if (latestUpdateUrl) void shell.openExternal(latestUpdateUrl);
+    } else {
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  ipcMain.handle("samson:checkForUpdates", async (): Promise<void> => {
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (err) {
+      emitUpdate({
+        type: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+}
+
+function configureAutoUpdater(): void {
+  // macOS auto-install requires a notarized signed binary, which this
+  // open-source project doesn't have. Fall back to notify-only on Mac:
+  // we surface "available" with a release URL, user re-downloads.
+  const isMac = process.platform === "darwin";
+  autoUpdater.autoDownload = !isMac;
+  autoUpdater.autoInstallOnAppQuit = !isMac;
+  autoUpdater.allowPrerelease = TOOL_VERSION.includes("-"); // alpha/beta builds opt in to prereleases
+
+  autoUpdater.on("checking-for-update", () => emitUpdate({ type: "checking" }));
+
+  autoUpdater.on("update-not-available", (info) => {
+    const v =
+      info && typeof info === "object" && "version" in info
+        ? String((info as { version: unknown }).version)
+        : TOOL_VERSION;
+    emitUpdate({ type: "current", currentVersion: v });
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    const version =
+      info && typeof info === "object" && "version" in info
+        ? String((info as { version: unknown }).version)
+        : "(unknown)";
+    const releaseUrl = `https://github.com/cooltrainersamson/samson-for-PCM32U/releases/tag/v${version}`;
+    latestUpdateUrl = releaseUrl;
+    emitUpdate({
+      type: "available",
+      version,
+      releaseUrl,
+      canAutoInstall: !isMac,
+    });
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    const percent =
+      progress && typeof progress === "object" && "percent" in progress
+        ? Number((progress as { percent: number }).percent)
+        : 0;
+    emitUpdate({ type: "downloading", percent });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    const version =
+      info && typeof info === "object" && "version" in info
+        ? String((info as { version: unknown }).version)
+        : "(unknown)";
+    emitUpdate({ type: "ready", version });
+  });
+
+  autoUpdater.on("error", (err) => {
+    emitUpdate({
+      type: "error",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  });
+
+  // Skip the check entirely in dev (no `out/` build, the autoUpdater
+  // would just throw "Application is not packaged.").
+  if (app.isPackaged) {
+    // Defer 3s so the renderer finishes mounting and can receive the
+    // events. Failure here is non-fatal — the app still works offline.
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((err: unknown) => {
+        emitUpdate({
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, 3000);
+  }
 }
 
 app.whenReady().then(() => {
   registerIpc();
   createWindow();
+  configureAutoUpdater();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

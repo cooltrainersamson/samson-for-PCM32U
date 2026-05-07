@@ -4,6 +4,7 @@ import type {
   RunOptions,
   PlatformInfo,
   PortInfo,
+  UpdateEvent,
 } from "../shared/ipc/events";
 
 export interface SamsonApi {
@@ -14,6 +15,9 @@ export interface SamsonApi {
   cancelRun(): Promise<void>;
   saveReport(markdown: string, suggestedFilename: string): Promise<string | null>;
   onEvent(callback: (event: RunEvent) => void): () => void;
+  onUpdate(callback: (event: UpdateEvent) => void): () => void;
+  installUpdate(): Promise<void>;
+  checkForUpdates(): Promise<void>;
 }
 
 const api: SamsonApi = {
@@ -29,6 +33,13 @@ const api: SamsonApi = {
     ipcRenderer.on("samson:event", listener);
     return () => ipcRenderer.removeListener("samson:event", listener);
   },
+  onUpdate: (callback) => {
+    const listener = (_evt: unknown, payload: UpdateEvent): void => callback(payload);
+    ipcRenderer.on("samson:update", listener);
+    return () => ipcRenderer.removeListener("samson:update", listener);
+  },
+  installUpdate: () => ipcRenderer.invoke("samson:installUpdate"),
+  checkForUpdates: () => ipcRenderer.invoke("samson:checkForUpdates"),
 };
 
 contextBridge.exposeInMainWorld("samson", api);
