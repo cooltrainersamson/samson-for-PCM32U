@@ -23,7 +23,14 @@ jobs:
           - os: macos-latest
             platform: mac
             cmd: dist:mac
-          - os: windows-latest
+          # Pinned to windows-2022 (not windows-latest). The current
+          # windows-latest runner (windows-2025) doesn't have a
+          # Visual Studio installation node-gyp can find, so the
+          # @serialport/bindings-cpp native rebuild fails. windows-2022
+          # ships VS 2022 BuildTools by default. Bump back to -latest
+          # once the windows-2025-vs2026 image is the default and
+          # known-working with our toolchain.
+          - os: windows-2022
             platform: win
             cmd: dist:win
           - os: ubuntu-latest
@@ -46,6 +53,9 @@ jobs:
           # Skip macOS code signing — no Apple Developer ID configured.
           # Without this, electron-builder hangs trying to find a cert.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # Help node-gyp find the right Visual Studio on Windows runners.
+          # Harmless on non-Windows.
+          GYP_MSVS_VERSION: "2022"
       - name: Upload artifacts
         # Run even if a previous step failed so partial-platform releases
         # still get the manifests + binaries that DID build.
