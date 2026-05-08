@@ -10,11 +10,12 @@
 // with flash side-effects is on it. Any addition to this list must be
 // reviewed against the PCM32U service map.
 //
-// SIDs that remain allowed (as of 2026-04):
+// SIDs that remain allowed (as of 2026-05):
+//   0x12  ReadDataByLocalIdentifier           (read-only; identification fallback)
+//   0x1A  ReadECUIdentification               (read-only; identification fallback)
 //   0x20  ReturnToNormal / alive ping         (read-only)
 //   0x23  ReadMemoryByAddress                 (read-only)
 //   0x27  SecurityAccess (seed/key)           (ephemeral RAM flag only)
-//   0x1A  ReadECUIdentification               (read-only; unused but safe)
 //
 // If you find yourself wanting to remove something from this blocklist,
 // stop and re-read ECU_TOOL_HANDOFF.md §13.
