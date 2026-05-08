@@ -172,6 +172,53 @@ export function buildUserSummary(input: ReportInput): UserSummary {
     }
   }
 
+  // ── 4b. Identification fallback probes ─────────────────────────────
+  // Only present when the orchestrator ran the Mode 0x12 / 0x1A ladder
+  // because Mode 0x23 returned NRC 0x11. The findings/contributions
+  // here are added on top of (or in place of) the broadcast section
+  // above — both can fire when the broadcast probe failed and the
+  // fallback found something useful.
+  if (input.identification !== undefined && !hasError(input.identification)) {
+    const ident = input.identification;
+    const ok = ident.successfulProbes.length;
+    const total = ident.attempts.length;
+    if (ident.matchedBroadcast && ident.matchedSource) {
+      findings.push({
+        kind: "ok",
+        headline: `Fallback probes identified your ECU as ${ident.matchedBroadcast.code}`,
+        detail: `Mode 0x${ident.matchedSource.service.toString(16).toUpperCase().padStart(2, "0")} 0x${ident.matchedSource.identifier.toString(16).toUpperCase().padStart(2, "0")} returned the broadcast string. ${ident.matchedBroadcast.year} ${ident.matchedBroadcast.vehicle} — ${ident.matchedBroadcast.engine} ${ident.matchedBroadcast.trans}.`,
+      });
+    } else if (ident.broadcastCandidates.length > 0) {
+      findings.push({
+        kind: "new",
+        headline: `Fallback probes found ${ident.broadcastCandidates.length} unknown 4-letter candidate${ident.broadcastCandidates.length === 1 ? "" : "s"}`,
+        detail: `The tool tried alternate KWP services (Mode 0x12 / 0x1A) since Mode 0x23 wasn't supported. ${ok} of ${total} probes responded. None of the surfaced strings (${ident.broadcastCandidates.join(", ")}) match the registry yet.`,
+      });
+      contributions.push(
+        "Pinpoints which Mode 0x12 / 0x1A identifier(s) your ECU answers, so the project owner can extend the auto-detection ladder for variants like yours.",
+      );
+    } else if (ok > 0) {
+      findings.push({
+        kind: "new",
+        headline: "Fallback probes answered but didn't surface a broadcast string",
+        detail: `${ok} of ${total} identification probes returned data, but none of the bytes contained a 4-letter ASCII run that looks like a broadcast code. The data is still useful — captured in the report.`,
+      });
+      contributions.push(
+        "Captures what each KWP identifier returns on this ECU variant, even when the tool can't yet interpret it as a broadcast.",
+      );
+    } else {
+      findings.push({
+        kind: "fail",
+        headline: "Neither Mode 0x23 nor the identification fallbacks worked",
+        detail:
+          "Every probe was rejected. The ECU might require a non-default KWP session (Mode 0x10) before responding, or it uses an entirely different identification mechanism.",
+      });
+      contributions.push(
+        "Documents an ECU that refuses every probe in the current ladder, narrowing the search for alternative diagnostic strategies.",
+      );
+    }
+  }
+
   // ── 5. DTC scan ────────────────────────────────────────────────────
   if (input.dtc !== undefined) {
     if (hasError(input.dtc)) {

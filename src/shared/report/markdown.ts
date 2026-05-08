@@ -7,6 +7,7 @@ import type { ElmInitReport, ElmTrace } from "../elm327/driver";
 import type { UnlockResult } from "../kwp/client";
 import type { BroadcastScanResult } from "../scanner/broadcast";
 import type { DtcScanResult } from "../scanner/dtc";
+import type { IdentificationResult } from "../scanner/identification";
 
 export interface ReportInput {
   readonly toolVersion: string;
@@ -26,6 +27,7 @@ export interface ReportInput {
   readonly ping?: { ok: boolean; echoByte: number } | { error: string };
   readonly unlock?: UnlockResult | { error: string; why?: string; fix?: string };
   readonly broadcast?: BroadcastScanResult | { error: string; why?: string; fix?: string };
+  readonly identification?: IdentificationResult | { error: string; why?: string; fix?: string };
   readonly dtc?: DtcScanResult | { error: string; why?: string; fix?: string };
   readonly fullDumpPath?: string;
   readonly warnings: readonly string[];
@@ -182,6 +184,95 @@ export function buildReport(input: ReportInput): string {
     push(`</details>`);
   }
   push();
+
+  // ── 4b. Identification fallback probes ─────────────────────────────
+  // Only present when the orchestrator ran the Mode 0x12 / Mode 0x1A
+  // ladder because Mode 0x23 returned NRC 0x11. Every (service,
+  // identifier) attempt is reported so the project owner can see what
+  // the ECU answered to which probe.
+  if (input.identification !== undefined) {
+    push(`## 4b. Identification fallback probes (Mode 0x12 / 0x1A)`);
+    push();
+    if (hasError(input.identification)) {
+      push(`**❌ FAILED:** ${input.identification.error}`);
+      if (input.identification.why) push(`> **Why:** ${input.identification.why}`);
+      if (input.identification.fix) push(`> **Fix:** ${input.identification.fix}`);
+    } else {
+      const ident = input.identification;
+      push(
+        `_Mode 0x23 was not available; tool fell back to KWP2000 identification services._`,
+      );
+      push();
+      const ok = ident.successfulProbes.length;
+      const total = ident.attempts.length;
+      push(`- **Probes attempted:** ${total}`);
+      push(`- **Probes that answered positively:** ${ok}`);
+      if (ident.matchedBroadcast && ident.matchedSource) {
+        push(
+          `- **Match:** \`${ident.matchedBroadcast.code}\` via Mode 0x${hex(ident.matchedSource.service)} 0x${hex(ident.matchedSource.identifier)} (${ident.matchedBroadcast.vehicle}, ${ident.matchedBroadcast.year} ${ident.matchedBroadcast.market}, ${ident.matchedBroadcast.trans}, ${ident.matchedBroadcast.engine})`,
+        );
+      } else if (ident.broadcastCandidates.length > 0) {
+        push(
+          `- **Unknown 4-letter candidates surfaced:** \`${ident.broadcastCandidates.join("`, `")}\``,
+        );
+      } else if (ok > 0) {
+        push(`- **No 4-letter broadcast string surfaced from any positive response.**`);
+      } else {
+        push(`- **No probe answered positively.** The ECU rejected every identifier we asked for.`);
+      }
+      push();
+      push(`### Per-probe results`);
+      push();
+      push(`| # | Service | Identifier | Label | Outcome | Notes |`);
+      push(`|---|---------|------------|-------|---------|-------|`);
+      ident.attempts.forEach((a, i) => {
+        const sid = `0x${hex(a.spec.service)}`;
+        const id = `0x${hex(a.spec.identifier)}`;
+        let outcome = "—";
+        let notes = "";
+        if (a.outcome.kind === "success") {
+          outcome = "✓ ok";
+          const ascii = a.outcome.ascii.length > 32
+            ? a.outcome.ascii.slice(0, 32) + "…"
+            : a.outcome.ascii;
+          notes = `\`${ascii}\` (${a.outcome.bytes.length} bytes)`;
+          if (a.outcome.broadcastCandidates.length > 0) {
+            notes += ` — candidates: \`${a.outcome.broadcastCandidates.join("`, `")}\``;
+          }
+        } else if (a.outcome.kind === "rejected") {
+          outcome = `✗ NRC 0x${hex(a.outcome.nrc)}`;
+          notes = a.outcome.nrcName;
+        } else {
+          outcome = "✗ error";
+          notes = a.outcome.message.replace(/\|/g, "\\|");
+        }
+        push(`| ${i + 1} | ${sid} | ${id} | ${a.spec.label} | ${outcome} | ${notes} |`);
+      });
+      push();
+      const successWithBytes = ident.successfulProbes.filter(
+        (a): a is typeof a & { outcome: { kind: "success" } } =>
+          a.outcome.kind === "success",
+      );
+      if (successWithBytes.length > 0) {
+        push(`<details><summary>Raw bytes of successful probes</summary>`);
+        push();
+        push(`\`\`\``);
+        for (const a of successWithBytes) {
+          if (a.outcome.kind !== "success") continue;
+          const sid = `0x${hex(a.spec.service)}`;
+          const id = `0x${hex(a.spec.identifier)}`;
+          push(`# ${sid} ${id}  ${a.spec.label}`);
+          push(hexDump(a.outcome.bytes, 0));
+          push(`# raw frame: ${a.outcome.rawFrame}`);
+          push(``);
+        }
+        push(`\`\`\``);
+        push();
+        push(`</details>`);
+      }
+    }
+    push();
+  }
 
   // ── 5. DTC tables (HEADLINE FEATURE) ───────────────────────────────
   push(`## 5. DTC table scan`);

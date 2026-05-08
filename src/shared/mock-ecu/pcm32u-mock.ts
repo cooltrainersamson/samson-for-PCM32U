@@ -49,6 +49,15 @@ export interface MockEcuOptions {
    * suite is built against.
    */
   readonly rmbaFlavor?: "dnyy" | "axiom";
+  /**
+   * Identification-service responses, keyed by `${service}:${identifier}`
+   * with values like `"1a:87"` mapping to the bytes the ECU should return
+   * (after the SID + identifier echo) for that probe. Used for Mode 0x12
+   * and Mode 0x1A. Any (service, identifier) not in the map is rejected
+   * as serviceNotSupported (NRC 0x11), modelling an ECU that only
+   * exposes a small subset of identification data.
+   */
+  readonly identificationData?: ReadonlyMap<string, readonly number[]>;
 }
 
 interface EcuState {
@@ -275,6 +284,25 @@ export class MockEcu {
       // Axiom dialect echoes only AM/AL in the positive response.
       const headerEcho = isAxiom ? [am, al] : [ah, am, al];
       this.respondFrame([...hdr, 0x63, ...headerEcho, ...data]);
+      return;
+    }
+    // Mode 0x12 (readDataByLocalIdentifier) and Mode 0x1A
+    // (readEcuIdentification) — fallback identification probes when
+    // Mode 0x23 isn't exposed. Both follow the same shape:
+    //   request:  SID identifier
+    //   positive: (SID+0x40) identifier ...payload...
+    if ((sid === 0x12 || sid === 0x1a) && bytes.length >= 2) {
+      const identifier = bytes[1]!;
+      const key = `${sid.toString(16)}:${identifier.toString(16).padStart(2, "0")}`;
+      const data = this.opts.identificationData?.get(key);
+      if (data) {
+        this.respondFrame([...hdr, sid + 0x40, identifier, ...data]);
+        return;
+      }
+      // No data for this identifier on this mock: treat as
+      // serviceNotSupported, matching the behaviour of an ECU that
+      // doesn't implement that specific identification slot.
+      this.respondFrame([...hdr, 0x7f, sid, 0x11]);
       return;
     }
     // Any other SID → serviceNotSupported

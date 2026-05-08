@@ -12,6 +12,7 @@ import { TransportError } from "./transport/types";
 import { KwpClient } from "./kwp/client";
 import { KwpNegativeError } from "./elm327/nrc";
 import { scanBroadcast } from "./scanner/broadcast";
+import { probeIdentificationServices, type IdentificationResult } from "./scanner/identification";
 import { scanDtcTables } from "./scanner/dtc";
 import { readMemory } from "./kwp/rmba";
 import { buildReport, reportFilename } from "./report/markdown";
@@ -108,6 +109,9 @@ export class Orchestrator {
     let pingResult: { ok: boolean; echoByte: number } | { error: string } | undefined;
     let unlockResult: UnlockResult | { error: string; why?: string; fix?: string } | undefined;
     let broadcastResult: BroadcastScanResult | { error: string; why?: string; fix?: string } | undefined;
+    let identificationResult: IdentificationResult | { error: string; why?: string; fix?: string } | undefined;
+    /** True iff the Mode 0x23 broadcast probe was rejected with NRC 0x11. */
+    let mode23Unsupported = false;
     let dtcResult: DtcScanResult | { error: string; why?: string; fix?: string } | undefined;
     let fullDumpPath: string | undefined;
     let matchedBroadcastCode: string | null = null;
@@ -233,6 +237,8 @@ export class Orchestrator {
           } catch (err) {
             const isSecurityDenied =
               err instanceof KwpNegativeError && err.nrc.code === 0x33;
+            const isServiceNotSupported =
+              err instanceof KwpNegativeError && err.nrc.code === 0x11;
             if (isSecurityDenied) {
               this.narrate(
                 "broadcast",
@@ -242,6 +248,21 @@ export class Orchestrator {
                 "broadcast",
                 "running",
                 "Deferred — ECU requires unlock first",
+              );
+            } else if (isServiceNotSupported) {
+              // The ECU genuinely doesn't expose Mode 0x23. Don't try
+              // again — instead, after unlock, fall back to Mode 0x12 /
+              // Mode 0x1A identification probes.
+              mode23Unsupported = true;
+              broadcastResult = this.errAsStage(err);
+              this.narrate(
+                "broadcast",
+                "ECU rejected Mode 0x23 with NRC 0x11 (serviceNotSupported). Will run identification-service fallback probes after unlock.",
+              );
+              this.phase(
+                "broadcast",
+                "warn",
+                "Mode 0x23 not supported — fallback probes queued",
               );
             } else {
               broadcastResult = this.errAsStage(err);
@@ -346,16 +367,108 @@ export class Orchestrator {
             }
             this.result("broadcast", "broadcast", b);
           } catch (err) {
+            const isServiceNotSupported =
+              err instanceof KwpNegativeError && err.nrc.code === 0x11;
             broadcastResult = this.errAsStage(err);
+            if (isServiceNotSupported) mode23Unsupported = true;
             this.warn(
               "broadcast",
               `Broadcast scan failed: ${(err as Error).message}`,
             );
             this.phase(
               "broadcast",
-              "error",
-              "Broadcast scan failed — continuing",
+              isServiceNotSupported ? "warn" : "error",
+              isServiceNotSupported
+                ? "Mode 0x23 not supported — fallback probes queued"
+                : "Broadcast scan failed — continuing",
             );
+          }
+        }
+
+        // ── PHASE: identification fallback ────────────────────────
+        // Mode 0x23 returned NRC 0x11 (serviceNotSupported) — meaning
+        // the ECU doesn't expose memory reads at all. Try Mode 0x12 /
+        // Mode 0x1A identification services instead. Every probe (and
+        // its outcome) is logged so the report shows exactly what the
+        // ECU answers to which identifier — invaluable data for
+        // characterising new PCM32U variants.
+        if (
+          mode23Unsupported &&
+          this.options.scanBroadcast !== false &&
+          !matchedBroadcastCode
+        ) {
+          this.throwIfCancelled();
+          this.phase("broadcast", "running", "Trying identification fallback probes (Mode 0x12 / 0x1A)…");
+          this.narrate(
+            "broadcast",
+            "Mode 0x23 isn't available on this ECU. Probing alternative KWP services.",
+          );
+          try {
+            const ident = await probeIdentificationServices(driver);
+            identificationResult = ident;
+            const okCount = ident.successfulProbes.length;
+            const totalCount = ident.attempts.length;
+            this.narrate(
+              "broadcast",
+              `Probed ${totalCount} (service, identifier) pairs. ${okCount} answered positively.`,
+            );
+            for (const a of ident.successfulProbes) {
+              this.narrate(
+                "broadcast",
+                `  ✓ ${a.spec.label}: ${a.outcome.kind === "success" ? a.outcome.ascii.replace(/\./g, "·").slice(0, 60) : ""}`,
+              );
+            }
+            if (ident.matchedBroadcast) {
+              matchedBroadcastCode = ident.matchedBroadcast.code;
+              this.narrate(
+                "broadcast",
+                `Matched broadcast ${ident.matchedBroadcast.code} via ${formatProbeRef(ident.matchedSource)}.`,
+              );
+              this.phase(
+                "broadcast",
+                "ok",
+                `Broadcast identified via fallback: ${ident.matchedBroadcast.code}`,
+              );
+            } else if (ident.broadcastCandidates.length > 0) {
+              this.narrate(
+                "broadcast",
+                `Surfaced ${ident.broadcastCandidates.length} unknown 4-letter candidate(s): ${ident.broadcastCandidates.join(", ")}.`,
+              );
+              this.phase(
+                "broadcast",
+                "warn",
+                `Fallback found ${ident.broadcastCandidates.length} candidate(s) but none matched the registry`,
+              );
+              warnings.push(
+                "Identification fallback probes succeeded but the broadcast wasn't in KNOWN_BROADCASTS — please send this report so the project owner can extend the registry.",
+              );
+            } else if (okCount > 0) {
+              this.phase(
+                "broadcast",
+                "warn",
+                `Fallback probes answered (${okCount}/${totalCount}) but no broadcast-shaped string surfaced`,
+              );
+              warnings.push(
+                "Identification fallback probes ran but didn't surface a 4-letter broadcast string. The ECU returned data — please send this report so the project owner can examine what's there.",
+              );
+            } else {
+              this.phase(
+                "broadcast",
+                "error",
+                `Fallback probes also rejected (0/${totalCount} answered)`,
+              );
+              warnings.push(
+                "Neither Mode 0x23 nor any of the identification fallback probes worked. ECU might require a non-default session (Mode 0x10) before responding.",
+              );
+            }
+            this.result("broadcast", "identification", ident);
+          } catch (err) {
+            identificationResult = this.errAsStage(err);
+            this.warn(
+              "broadcast",
+              `Identification fallback failed: ${(err as Error).message}`,
+            );
+            this.phase("broadcast", "error", "Identification fallback failed");
           }
         }
 
@@ -471,6 +584,7 @@ export class Orchestrator {
           ping: pingResult,
           unlock: unlockResult,
           broadcast: broadcastResult,
+          identification: identificationResult,
           dtc: dtcResult,
           fullDumpPath,
           warnings,
@@ -531,6 +645,7 @@ export class Orchestrator {
         ping: pingResult,
         unlock: unlockResult,
         broadcast: broadcastResult,
+        identification: identificationResult,
         dtc: dtcResult,
         fullDumpPath,
         warnings,
@@ -605,4 +720,12 @@ export class Orchestrator {
       stopped = true;
     };
   }
+}
+
+
+function formatProbeRef(ref: { service: number; identifier: number } | null): string {
+  if (!ref) return "(unknown probe)";
+  const sid = ref.service.toString(16).toUpperCase().padStart(2, "0");
+  const id = ref.identifier.toString(16).toUpperCase().padStart(2, "0");
+  return `Mode 0x${sid} 0x${id}`;
 }
