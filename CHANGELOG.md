@@ -1,5 +1,60 @@
 # Changelog
 
+## v0.1.0-alpha.5 — 2026-05-08
+
+Fourth alpha release. Headline: **the tool now identifies ECUs that
+don't expose Mode 0x23**, automatically falling back to KWP2000
+identification services and logging exactly which (service, identifier)
+pairs the ECU answered to.
+
+### What's new
+
+- **Identification fallback ladder.** Some PCM32U variants don't
+  implement Mode 0x23 at all — they answer NRC 0x11
+  (serviceNotSupported) regardless of unlock state or session. First
+  observed in the wild on a 2003 Rodeo 6VE1 in a 2026-05-08 report.
+  Without Mode 0x23 the previous tool just gave up. Now, when a Mode
+  0x23 broadcast probe fails specifically with NRC 0x11, the tool
+  automatically runs an 11-step ladder of Mode 0x12
+  (readDataByLocalIdentifier) and Mode 0x1A (readEcuIdentification)
+  probes after unlock. Every (service, identifier) attempt is recorded
+  in the report — outcome, NRC name (if rejected), or returned bytes
+  with ASCII rendering and any 4-letter ASCII candidates that look
+  like a broadcast code.
+
+  Auto-detection-first as always: zero user input. The ladder runs
+  the moment the conditions are met. It also stops early on the first
+  known-broadcast match — but every probe attempted before the match
+  is still recorded, so the project owner can see exactly which
+  (service, identifier) pair surfaces the broadcast on this ECU
+  variant.
+
+  Both the markdown report and the user-summary panel reflect the
+  new fallback. The markdown gets a new "## 4b. Identification
+  fallback probes" section with a per-probe table. The summary panel
+  adds a finding row that escalates appropriately: green check
+  + vehicle name when a known broadcast was matched, ★ "new
+  candidates surfaced" when probes answer with strings we don't
+  recognize, or ✕ "neither Mode 0x23 nor identification fallbacks
+  worked" when nothing answers.
+
+  Both Mode 0x12 and Mode 0x1A are read-only KWP services and were
+  already not on the destructive-SID blocklist, so the safety rail
+  required no changes — the safety.ts allowed-SID comment was
+  updated to reflect that they're intentionally allowed.
+
+### Behaviour changes & migration notes
+
+- Existing 0.1.0-alpha.4 users: this release will arrive automatically
+  via the auto-update path — Linux/Windows silently, macOS as a
+  notify-only banner with a download CTA. First release where the
+  auto-update flow actually does something for end users.
+- Users on alpha.3 or earlier have no autoUpdater wired in and still
+  need a one-time manual re-download.
+- Tests: 63 pass (was 56; +7 for the identification module).
+- For ECUs that already work via Mode 0x23: zero behavioural change,
+  the fallback only runs when Mode 0x23 specifically returns NRC 0x11.
+
 ## v0.1.0-alpha.4 — 2026-05-07
 
 Third alpha release. Headline: **the tool now updates itself, and
